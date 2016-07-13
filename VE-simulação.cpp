@@ -1,8 +1,9 @@
 #include<iostream>
+#include<functional>
 #include<queue>
+#include<vector>
 
 using namespace std;
-
 class Caixa {
 	private:
 		float time;
@@ -24,28 +25,35 @@ class Caixa {
 		int getId(){
 			return this->id;
 		}
-		
+
 		~Caixa(){}
+};
+
+struct CompareCaixas : public binary_function<Caixa*, Caixa*, bool>{
+	bool operator()(Caixa* caixa1, Caixa* caixa2) const
+	{
+		return caixa1->getTime()>caixa2->getTime();
+	}
 };
 
 class Banco {
 	private:
 		float averageAttendaceTime;
-		priority_queue<Caixa*> *caixas;
+		priority_queue<Caixa*, vector<Caixa*>, CompareCaixas> *caixas;
 		int numCaixas;
 		float wait;
 	public:
 		Banco(float averageAttendaceTime, int numCaixas) {
 			this->averageAttendaceTime = averageAttendaceTime;
 			this->numCaixas = numCaixas;
-			this->caixas = new priority_queue<Caixa*>();
+			this->caixas = new priority_queue<Caixa*, vector<Caixa*>, CompareCaixas>();
 			this->wait = 0;
 			for(int i=0; i < numCaixas; i++) {
 				Caixa* caixa = new Caixa(i);
 				caixas->push(caixa);
 			}
 		}
-
+		
 		void addClient(float curTime) {
 			Caixa *caixa = caixas->top();
 			caixas->pop();
