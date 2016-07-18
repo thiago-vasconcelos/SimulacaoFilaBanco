@@ -21,10 +21,12 @@ class Client {
 	private:
 		ClientPriority priority;
 		float entranceTime;
+		float leaveTime;
 	public:
 		Client(ClientPriority priority, float entranceTime){
 			this->priority = priority;
 			this->entranceTime = entranceTime;
+			this->leaveTime = 0;
 		}
 
 		ClientPriority GetPriority(){
@@ -35,11 +37,19 @@ class Client {
 			return this->entranceTime;
 		}
 
+		void SetLeaveTime(float leaveTime){
+			this->leaveTime = leaveTime;
+		}
+
+		float GetLeaveTime(){
+			return this->leaveTime;
+		}
+
 		~Client(){}
 };
 
 struct CompareClients : public binary_function<Client*, Client*, bool>{
-	bool operator()(Client* client1, Client* client2) const
+	bool operator()(Client* client1, Client* client2)
 	{
 		if(client1->GetPriority() != client2->GetPriority()){
 			if(client1->GetPriority() == PRIORITY) return true;
@@ -75,9 +85,9 @@ class Caixa {
 };
 
 struct CompareCaixas : public binary_function<Caixa*, Caixa*, bool>{
-	bool operator()(Caixa* caixa1, Caixa* caixa2) const
+	bool operator()(Caixa* caixa1, Caixa* caixa2)
 	{
-		return caixa1->getTime()>caixa2->getTime();
+		return caixa1->GetTime()>caixa2->GetTime();
 	}
 };
 
@@ -111,7 +121,7 @@ class Banco {
 			(this->clients)->push(newClient);
 		}
 
-		float* SolveClient() {
+		Client* SolveClient() {
 			Caixa *caixa = caixas->top();
 			caixas->pop();
 			Client *client = clients->top();
@@ -121,14 +131,15 @@ class Banco {
 			float newCurTime;
 			if (caixaTime > curTime) {
 				wait += caixaTime - curTime;
-				newCurTime = caixaTime + this->GetAttendanceTime()
+				newCurTime = caixaTime + this->GetAttendanceTime();
 			}
 			else {
-				newCurTime = caixaTimecurTime + this->GetAttendanceTime()
+				newCurTime = curTime + this->GetAttendanceTime();
 			}
-			caixa->setTime(newCurTime);
+			caixa->SetTime(newCurTime);
 			caixas->push(caixa);
-			return newCurTime;
+			client->SetLeaveTime(newCurTime);
+			return client;
 		}
 
 		float GetAttendanceTime(){
@@ -152,7 +163,7 @@ class Events{
 		EventType eventType;
 		float time;
 	public:
-		Event(EventType eventType, float time){
+		Events(EventType eventType, float time){
 			this->eventType = eventType;
 			this->time = time;
 		}
@@ -161,17 +172,17 @@ class Events{
 			return this->eventType;
 		}
 
-		float getTime(){
+		float GetTime(){
 			return this->time;
 		}
 
-		~Event(){}
+		~Events(){}
 };
 
 struct CompareEvents : public binary_function<Events*, Events*, bool>{
-	bool operator()(Events* event1, Events* event2) const
+	bool operator()(Events* event1, Events* event2)
 	{
-		return event1->getTime()>event2->getTime();
+		return event1->GetTime()>event2->GetTime();
 	}
 };
 
@@ -180,14 +191,14 @@ class Simulation {
 		float averageAttendanceTime;
 		float averageEntrance;
 		int numCaixas;
-		priority_queue<Events*, vector<Events*>, CompareEvents>* enventQueue;
+		priority_queue<Events*, vector<Events*>, CompareEvents>* eventQueue;
 		float runTime;
 		float priorityClientsProbability;
 	public:
 		Simulation(float averageAttendanceTime, float averageEntrance, int numCaixas, float priorityClientsProbability, float runTime) {
 			this->averageAttendanceTime = averageAttendanceTime;
 			this->averageEntrance = averageEntrance;
-			this->enventQueue = new queue<EventType>();
+			this->eventQueue = new priority_queue<Events*, vector<Events*>, CompareEvents>();
 			this->numCaixas = numCaixas;
 			this->priorityClientsProbability = priorityClientsProbability;
 			this->runTime = runTime;
@@ -196,7 +207,7 @@ class Simulation {
 		Client* GenerateClient(float curTime){
 			float probability = GenerateRandomNumber();
 			Client* newClient;
-			if(probability < this->PriorityClientsProbability){
+			if(probability < this->priorityClientsProbability){
 				newClient = new Client(PRIORITY, curTime);
 			}
 			else{
@@ -208,30 +219,37 @@ class Simulation {
 		float Run() {
 			int clients = 0;
 			float averageWaitTime = 0;
-			float curTime = 0;
+			cout<<"curTime"<<endl;
 			Banco *banco = new Banco(this->averageAttendanceTime, this->numCaixas);
-			enventQueue.push(ADD);
-			EventType envent;
-			float nextClient;
-			for(float curTime = 0; !eventQueue.empty();){
-				event = eventQueue.top();
-				eventQueue.pop();
-				switch (event) {
+			Events* firstEvent = new Events(ADD, this->GetEntranceTime());
+			eventQueue->push(firstEvent);
+			Events* event;
+			for(float curTime = 0; !(eventQueue->empty());){
+				cout<<curTime<<endl;
+				event = eventQueue->top();
+				eventQueue->pop();
+				switch (event->GetEventType()) {
 					case ADD:
+					{
 						Client* newClient = GenerateClient(curTime);
-						banco->AddClient(newClient);
-						nextClientEntrance = curTime + this->GetEntranceTime();
+						float nextClientEntrance = curTime + this->GetEntranceTime();
 						if(nextClientEntrance < this->runTime){
+							banco->AddClient(newClient);
+							clients++;
 							Events* newEvent = new Events(ADD, curTime);
 							eventQueue->push(newEvent);
+						} else{
+							delete(newClient);
 						}
 						break;
+					}
 					default:
-				}
-				nextClient = banco->AddClient(i);
-				clients++;
-				if(runTime){
-					enventQueue.push(ADD);
+					{
+						Client* leavingClient = banco->SolveClient();
+						Events* newEvent = new Events(SOLVE, leavingClient->GetLeaveTime());
+						eventQueue->push(newEvent);
+						delete(leavingClient);
+					}
 				}
 			}
 
@@ -248,7 +266,7 @@ class Simulation {
 		}
 
 		~Simulation(){
-			delete(eventQueue)
+			delete(eventQueue);
 		}
 };
 
@@ -260,6 +278,11 @@ int main() {
 	float priorityClientsProbability;
 	float runTime;
 	cin>>averageAttendanceTime>>averageEntrance>>numCaixas>>priorityClientsProbability>>runTime;
+	cout<<"averageAttendanceTime: "<<averageAttendanceTime<<endl;
+	cout<<"averageEntrance: "<<averageEntrance<<endl;
+	cout<<"numCaixas: "<<numCaixas<<endl;
+	cout<<"priorityClientsProbability: "<<priorityClientsProbability<<endl;
+	cout<<"runTime: "<<runTime<<endl;
 	Simulation *simulation = new Simulation(averageAttendanceTime, averageEntrance, numCaixas, priorityClientsProbability, runTime);
 	float averageWait = simulation->Run();
 	cout<<averageWait;
