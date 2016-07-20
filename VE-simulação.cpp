@@ -62,12 +62,12 @@ struct CompareClients : public binary_function<Client*, Client*, bool>{
 	}
 };
 
-class atendente {
+class Atendente {
 	private:
 		float time;
 		int id;
 	public:
-		atendente(int id) {
+		Atendente(int id) {
 			this->time = 0;
 			this->id = id;
 		}
@@ -84,11 +84,11 @@ class atendente {
 			return this->id;
 		}
 
-		~atendente(){}
+		~Atendente(){}
 };
 
-struct Compareatendentes : public binary_function<atendente*, atendente*, bool>{
-	bool operator()(atendente* atendente1, atendente* atendente2)
+struct Compareatendentes : public binary_function<Atendente*, Atendente*, bool>{
+	bool operator()(Atendente* atendente1, Atendente* atendente2)
 	{
 		return atendente1->GetTime()>atendente2->GetTime();
 	}
@@ -103,12 +103,14 @@ class Banco {
 	private:
 		float averageAttendaceTime;
 		float PriorityClientsProbability;
-		priority_queue<atendente*, vector<atendente*>, Compareatendentes> *atendentes;
+		priority_queue<Atendente*, vector<Atendente*>, Compareatendentes> *caixas;
+		priority_queue<Atendente*, vector<Atendente*>, Compareatendentes> *gerentes;
 		priority_queue<Client*, vector<Client*>, CompareClients> *regularCaixaClients;
 		priority_queue<Client*, vector<Client*>, CompareClients> *priorityCaixaClients;
 		priority_queue<Client*, vector<Client*>, CompareClients> *regularGerenteClients;
 		priority_queue<Client*, vector<Client*>, CompareClients> *priorityGerenteClients;
-		int numAtendentes;
+		int numCaixas;
+		int numGerentes;
 		float wait;
 		float priorityWait;
 		float regularWait;
@@ -117,18 +119,24 @@ class Banco {
 		float priorityCaixaWait;
 		float regularCaixaWait;
 	public:
-		Banco(float averageAttendaceTime, int numAtendentes) {
+		Banco(float averageAttendaceTime, int numCaixas, int numGerentes) {
 			this->averageAttendaceTime = averageAttendaceTime;
-			this->numAtendentes = numAtendentes;
-			this->atendentes = new priority_queue<atendente*, vector<atendente*>, Compareatendentes>();
+			this->numCaixas = numCaixas;
+			this->numGerentes = numGerentes;
+			this->caixas = new priority_queue<Atendente*, vector<Atendente*>, Compareatendentes>();
+			this->gerentes = new priority_queue<Atendente*, vector<Atendente*>, Compareatendentes>();
 			this->wait = 0;
 			this->priorityCaixaWait = 0;
 			this->regularCaixaWait = 0;
 			this->priorityGerenteWait = 0;
 			this->regularGerenteWait = 0;
-			for(int i=0; i < numAtendentes; i++) {
-				atendente* atendente = new atendente(i);
-				atendentes->push(atendente);
+			for(int i=0; i < numCaixas; i++) {
+				Atendente* atendente = new Atendente(i);
+				caixas->push(atendente);
+			}
+			for(int i=0; i < numGerentes; i++) {
+				Atendente* atendente = new Atendente(i);
+				gerentes->push(atendente);
 			}
 			this->regularCaixaClients = new priority_queue<Client*, vector<Client*>, CompareClients>();
 			this->priorityCaixaClients = new priority_queue<Client*, vector<Client*>, CompareClients>();
@@ -141,21 +149,24 @@ class Banco {
 				case OUTROS:
 					switch (newClient->GetType()) {
 						case PRIORITY:
-						(this->priorityCaixaClients)->push(newClient);
+							(this->priorityGerenteClients)->push(newClient);
+							break;
 						default:
-						(this->regularCaixaClients)->push(newClient);
+							(this->regularGerenteClients)->push(newClient);
 					}
+					break;
 				default:
 					switch (newClient->GetType()) {
 						case PRIORITY:
-						(this->priorityCaixaClients)->push(newClient);
+							(this->priorityCaixaClients)->push(newClient);
+							break;
 						default:
-						(this->regularCaixaClients)->push(newClient);
+							(this->regularCaixaClients)->push(newClient);
 					}
 			}
 		}
 
-		Client* GetNextClient(float curTime){
+		Client* GetNextCaixaClient(float curTime){
 			if(!((this->priorityCaixaClients)->empty()) && !((this->regularCaixaClients)->empty())) {
 				Client* priorityClient = (this->priorityCaixaClients)->top();
 				Client* regularClient = (this->regularCaixaClients)->top();
@@ -181,9 +192,9 @@ class Banco {
 		}
 
 		Client* SolveCaixaClient() {
-			atendente *atendente = atendentes->top();
-			atendentes->pop();
-			Client* client = this->GetNextClient(atendente->GetTime());
+			Atendente *atendente = (this->caixas)->top();
+			(this->caixas)->pop();
+			Client* client = this->GetNextCaixaClient(atendente->GetTime());
 			float curTime = client->GetEntranceTime();
 			float atendenteTime = atendente->GetTime();
 			float newCurTime;
@@ -201,7 +212,59 @@ class Banco {
 				newCurTime = curTime + this->GetAttendanceTime();
 			}
 			atendente->SetTime(newCurTime);
-			atendentes->push(atendente);
+			caixas->push(atendente);
+			client->SetLeaveTime(newCurTime);
+			return client;
+		}
+
+		Client* GetNextGerenteClient(float curTime){
+			if(!((this->priorityGerenteClients)->empty()) && !((this->regularGerenteClients)->empty())) {
+				Client* priorityClient = (this->priorityGerenteClients)->top();
+				cout<<"***************************"<<endl;
+				Client* regularClient = (this->regularGerenteClients)->top();
+				if(priorityClient->GetEntranceTime() <= curTime){
+					priorityGerenteClients->pop();
+					return priorityClient;
+				}
+				if(priorityClient->GetEntranceTime() < regularClient->GetEntranceTime()){
+					priorityGerenteClients->pop();
+					return priorityClient;
+				}
+				regularGerenteClients->pop();
+				return regularClient;
+			} else if(!((this->priorityGerenteClients)->empty())) {
+				Client* priorityClient = (this->priorityGerenteClients)->top();
+				priorityGerenteClients->pop();
+				return priorityClient;
+			} else {
+				Client* regularClient = (this->regularGerenteClients)->top();
+				regularGerenteClients->pop();
+				return regularClient;
+			}
+		}
+
+		Client* SolveGerenteClient() {
+			Atendente *atendente = (this->gerentes)->top();
+			(this->gerentes)->pop();
+			Client* client = this->GetNextGerenteClient(atendente->GetTime());
+			float curTime = client->GetEntranceTime();
+			float atendenteTime = atendente->GetTime();
+			float newCurTime;
+			if (atendenteTime > curTime) {
+				wait += atendenteTime - curTime;
+				if(client->GetType() == PRIORITY){
+					this->priorityGerenteWait += atendenteTime - curTime;
+				}
+				if(client->GetType() == REGULAR){
+					this->regularGerenteWait += atendenteTime - curTime;
+				}
+				newCurTime = atendenteTime + this->GetAttendanceTime();
+			}
+			else {
+				newCurTime = curTime + this->GetAttendanceTime();
+			}
+			atendente->SetTime(newCurTime);
+			gerentes->push(atendente);
 			client->SetLeaveTime(newCurTime);
 			return client;
 		}
@@ -231,10 +294,18 @@ class Banco {
 		}
 
 		~Banco(){
-			for(int i=0; i<numAtendentes; i++) {
-				atendentes->pop();
+			for(int i=0; i<(this->numCaixas); i++) {
+				Atendente* atendente = (this->caixas)->top();
+				(this->caixas)->pop();
+				delete(atendente);
 			}
-			delete(atendentes);
+			delete(caixas);
+			for(int i=0; i<(this->numGerentes); i++) {
+				Atendente* atendente = (this->gerentes)->top();
+ 				(this->gerentes)->pop();
+ 				delete(atendente);
+			}
+			delete(gerentes);
 		}
 };
 
@@ -251,7 +322,7 @@ class Simulation {
 		int numRegularCaixaClients;
 		Banco *banco;
 	public:
-		Simulation(float averageAttendanceTime, float averageEntrance, int numAtendentes, float priorityClientsProbability, float runTime, float serviceProbability) {
+		Simulation(float averageAttendanceTime, float averageEntrance, int numCaixas, int numGerentes, float priorityClientsProbability, float runTime, float serviceProbability) {
 			this->averageEntrance = averageEntrance;
 			this->priorityClientsProbability = priorityClientsProbability;
 			this->runTime = runTime;
@@ -260,7 +331,7 @@ class Simulation {
 			this->numPriorityCaixaClients = 0;
 			this->numRegularGerenteClients = 0;
 			this->numRegularCaixaClients = 0;
-			this->banco = new Banco(averageAttendanceTime, numAtendentes);
+			this->banco = new Banco(averageAttendanceTime, numCaixas, numGerentes);
 		}
 
 		Client* GenerateClient(float curTime){
@@ -302,17 +373,20 @@ class Simulation {
 			}
 		}
 
-		void SolveClients(int numClients){
-			for(int i=0; i< numClients; i++){
-				cout<<"***********************************************"<<endl;
-				Client* leavingClient = (this->banco)->SolveClient();
+		void SolveClients(){
+			for(int i=0; i< numRegularCaixaClients+numPriorityCaixaClients; i++){
+				Client* leavingClient = (this->banco)->SolveCaixaClient();
+				delete(leavingClient);
+			}
+			for(int i=0; i< numRegularGerenteClients+numPriorityGerenteClients; i++){
+				Client* leavingClient = (this->banco)->SolveGerenteClient();
 				delete(leavingClient);
 			}
 		}
 
 		void Run() {
 			this->AddClients();
-			this->SolveClients(this->numClients);
+			this->SolveClients();
 		}
 
 		float GetWait(){
@@ -363,18 +437,20 @@ int main() {
 	srand (static_cast <unsigned> (time(0)));
 	float averageAttendanceTime;
 	float averageEntrance;
-	int numAtendentes;
+	int numCaixas;
+	int numGerentes;
 	float priorityClientsProbability;
 	float serviceProbability;
 	float runTime;
-	cin>>averageAttendanceTime>>averageEntrance>>numAtendentes>>priorityClientsProbability>>runTime>>serviceProbability;
+	cin>>averageAttendanceTime>>averageEntrance>>numCaixas>>numGerentes>>priorityClientsProbability>>runTime>>serviceProbability;
 	cout<<"averageAttendanceTime: "<<averageAttendanceTime<<endl;
 	cout<<"averageEntrance: "<<averageEntrance<<endl;
-	cout<<"numAtendentes: "<<numAtendentes<<endl;
+	cout<<"numCaixas: "<<numCaixas<<endl;
+	cout<<"numGerentes: "<<numGerentes<<endl;
 	cout<<"priorityClientsProbability: "<<priorityClientsProbability<<endl;
 	cout<<"runTime: "<<runTime<<endl;
 	cout<<"serviceProbability: "<<serviceProbability<<endl;
-	Simulation *simulation = new Simulation(averageAttendanceTime, averageEntrance, numAtendentes, priorityClientsProbability, runTime, serviceProbability);
+	Simulation *simulation = new Simulation(averageAttendanceTime, averageEntrance, numCaixas, numGerentes, priorityClientsProbability, runTime, serviceProbability);
 	simulation->Run();
 	cout<<"averageWait: "<<simulation->GetWait()<<endl;
 	cout<<"averagePriorityGerenteWait: "<<simulation->GetAveragePriorityGerenteWait()<<endl;
